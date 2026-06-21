@@ -109,7 +109,7 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             <div>
               <h1 className="text-2xl font-black tracking-tight">Indigo White</h1>
               <p className="text-xs text-indigo-200">
-                {portal === 'admin' ? 'Acesso interno da equipe' : 'Cadastro e acesso do cliente'}
+                {portal === 'admin' ? 'Area restrita' : 'Cadastro e acesso do cliente'}
               </p>
             </div>
           </div>
@@ -121,11 +121,11 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({
             </div>
             <div className="flex gap-3">
               <ShieldCheck className="w-5 h-5 text-indigo-300 shrink-0 mt-0.5" />
-              <p>
-                {portal === 'admin'
-                  ? 'Gerentes usam um codigo interno para cadastrar o perfil e depois fazem login normalmente.'
-                  : 'O acesso interno da equipe nao aparece na interface publica.'}
-              </p>
+                <p>
+                  {portal === 'admin'
+                    ? 'O acesso interno fica reservado para quem tem o caminho oculto da equipe.'
+                    : 'A interface publica mostra somente o fluxo do cliente.'}
+                </p>
             </div>
             <div className="flex gap-3">
               <LockKeyhole className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
