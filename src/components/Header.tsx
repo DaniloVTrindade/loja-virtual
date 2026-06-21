@@ -149,7 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="text-left leading-tight">
                 <p className="text-xs text-indigo-200">Ola, <span className="font-bold text-white">{identity.name.split(' ')[0]}</span></p>
                 <div className="flex items-center gap-1 text-[11px] bg-indigo-950/70 px-1.5 py-0.5 rounded text-indigo-100 font-semibold mt-0.5">
-                  <span>{!session ? 'Entrar ou cadastrar' : identity.role === 'manager' ? 'Gerente' : `Carteira: R$ ${user.walletBalance.toFixed(2)}`}</span>
+                  <span>{!session ? 'Entrar ou cadastrar' : identity.role === 'manager' ? 'Acesso interno' : `Carteira: R$ ${user.walletBalance.toFixed(2)}`}</span>
                   <ChevronDown className="w-3 h-3 text-indigo-300" />
                 </div>
               </div>
@@ -162,11 +162,11 @@ export const Header: React.FC<HeaderProps> = ({
                   <p className="text-xs text-slate-500">{identity.email}</p>
                   <div className="mt-2 bg-gradient-to-r from-slate-950 to-indigo-700 text-white rounded-lg p-2.5 text-xs shadow-sm">
                     <div className="flex justify-between font-bold">
-                      <span>{!session ? 'Conta Indigo White' : identity.role === 'manager' ? 'Painel gerencial' : 'Carteira Indigo'}</span>
-                      <span>{!session ? 'Acesso' : identity.role === 'manager' ? 'Admin' : `R$ ${user.walletBalance.toFixed(2)}`}</span>
+                      <span>{!session ? 'Conta Indigo White' : identity.role === 'manager' ? 'Area interna' : 'Carteira Indigo'}</span>
+                      <span>{!session ? 'Acesso' : identity.role === 'manager' ? 'Equipe' : `R$ ${user.walletBalance.toFixed(2)}`}</span>
                     </div>
                     <p className="text-[10px] text-indigo-100 mt-1">
-                      {!session ? 'Crie sua conta de cliente ou entre como gerente' : identity.role === 'manager' ? 'Produtos, pedidos, precos, politicas e IA' : `Rendimento de R$ ${user.walletEarnings.toFixed(2)} este mes`}
+                      {!session ? 'Crie sua conta de cliente ou entre' : identity.role === 'manager' ? 'Produtos, pedidos, precos, politicas e IA' : `Rendimento de R$ ${user.walletEarnings.toFixed(2)} este mes`}
                     </p>
                   </div>
                 </div>
@@ -230,9 +230,9 @@ export const Header: React.FC<HeaderProps> = ({
           ))}
           <div className="ml-auto hidden xl:flex items-center space-x-4 text-xs text-indigo-200 font-semibold">
             <button onClick={() => setActiveView('profile')} className="hover:text-white">Cupons & Promos</button>
-            <button onClick={() => setActiveView(identity.role === 'manager' ? 'manager' : 'login')} className="hover:text-white flex items-center gap-1 bg-indigo-700/80 px-2 py-1 rounded-md text-white">
+            <button onClick={() => setActiveView('login')} className="hover:text-white flex items-center gap-1 bg-indigo-700/80 px-2 py-1 rounded-md text-white">
               <Sparkles className="w-3 h-3 text-yellow-300" />
-              <span>Area do gerente</span>
+              <span>Minha conta</span>
             </button>
           </div>
         </div>

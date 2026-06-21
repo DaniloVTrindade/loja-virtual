@@ -72,7 +72,7 @@ export const Footer: React.FC<FooterProps> = ({ highContrast, onOpenPolicy }) =>
             <li><a href="#" className="hover:underline">Produtos e estoque</a></li>
             <li><a href="#" className="hover:underline">Precos e promocoes</a></li>
             <li><a href="#" className="hover:underline">Pedidos e rastreio</a></li>
-            <li><a href="#" className="hover:underline">IA para gerentes</a></li>
+            <li><a href="#" className="hover:underline">IA operacional</a></li>
             <li><a href="#" className="hover:underline">SEO de produtos</a></li>
           </ul>
         </div>

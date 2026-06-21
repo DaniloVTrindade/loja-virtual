@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { AccessibilityWidget } from './components/AccessibilityWidget';
 import { AIAssistant } from './components/AIAssistant';
@@ -14,9 +14,11 @@ import { ProductList } from './components/ProductList';
 import { UserDashboard } from './components/UserDashboard';
 import { MANAGERS, MOCK_COUPONS, MOCK_ORDERS, MOCK_PRODUCTS, STORE_POLICIES } from './data/mockData';
 import { AccessibilitySettings, AuthRecord, CartItem, Order, Product, StoreAccount, StorePolicy, UserProfile } from './types';
+import { loadBootstrap, loginAccount as apiLoginAccount, registerAccount as apiRegisterAccount, removeProduct as apiRemoveProduct, saveOrder as apiSaveOrder, saveProduct as apiSaveProduct } from './services/backend';
 import { useLocalStorage } from './utils/useLocalStorage';
 
 export const App: React.FC = () => {
+  const isAdminPortal = new URLSearchParams(window.location.search).get('iw') === 'admin';
   const [activeView, setActiveView] = useState<string>('home');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedPolicySlug, setSelectedPolicySlug] = useState<StorePolicy['slug']>('terms');
@@ -32,8 +34,6 @@ export const App: React.FC = () => {
     savedAddresses: [],
     favoriteIds: []
   });
-  const [clientAccounts, setClientAccounts] = useLocalStorage<AuthRecord[]>('indigo-white-client-accounts', []);
-  const [managerAccounts, setManagerAccounts] = useLocalStorage<AuthRecord[]>('indigo-white-manager-accounts', []);
   const [products, setProducts] = useLocalStorage<Product[]>('indigo-white-products', MOCK_PRODUCTS);
   const [orders, setOrders] = useLocalStorage<Order[]>('indigo-white-orders', MOCK_ORDERS);
   const [session, setSession] = useLocalStorage<StoreAccount | null>('indigo-white-session', null);
@@ -52,6 +52,23 @@ export const App: React.FC = () => {
     screenReaderHelp: false,
     letterSpacing: false
   });
+
+  useEffect(() => {
+    let mounted = true;
+    loadBootstrap()
+      .then((data) => {
+        if (!mounted) return;
+        if (data.products?.length) setProducts(data.products);
+        if (data.orders?.length) setOrders(data.orders);
+      })
+      .catch(() => {
+        // Keep the local demo data if the backend is not yet available.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [setOrders, setProducts]);
 
   const activeManager = useMemo(() => {
     if (session?.role !== 'manager') return MANAGERS[0];
@@ -102,12 +119,18 @@ export const App: React.FC = () => {
   };
 
   const handleCompleteOrder = (newOrder: Order) => {
-    setOrders((prev) => [newOrder, ...prev]);
-    setUser((prev) => ({
-      ...prev,
-      walletBalance: prev.walletBalance + newOrder.total * 0.01,
-      walletEarnings: prev.walletEarnings + newOrder.total * 0.01
-    }));
+    apiSaveOrder(newOrder, session?.id, session?.token)
+      .then(() => {
+        setOrders((prev) => [newOrder, ...prev]);
+        setUser((prev) => ({
+          ...prev,
+          walletBalance: prev.walletBalance + newOrder.total * 0.01,
+          walletEarnings: prev.walletEarnings + newOrder.total * 0.01
+        }));
+      })
+      .catch(() => {
+        setOrders((prev) => [newOrder, ...prev]);
+      });
   };
 
   const handleToggleFavorite = (productId: string, e?: React.MouseEvent) => {
@@ -123,70 +146,107 @@ export const App: React.FC = () => {
   };
 
   const handleCreateProduct = (product: Product) => {
-    setProducts((prev) => [product, ...prev]);
-    triggerToast('Produto publicado no catalogo');
+    apiSaveProduct(product, session?.token)
+      .then(() => {
+        setProducts((prev) => [product, ...prev.filter((item) => item.id !== product.id)]);
+        triggerToast('Produto publicado no catalogo');
+      })
+      .catch(() => triggerToast('Falha ao salvar no banco'));
   };
 
   const handleUpdateProduct = (product: Product) => {
-    setProducts((prev) => prev.map((item) => item.id === product.id ? product : item));
-    setSelectedProduct((prev) => prev?.id === product.id ? product : prev);
-    triggerToast('Produto atualizado');
+    apiSaveProduct(product, session?.token)
+      .then(() => {
+        setProducts((prev) => prev.map((item) => item.id === product.id ? product : item));
+        setSelectedProduct((prev) => prev?.id === product.id ? product : prev);
+        triggerToast('Produto atualizado');
+      })
+      .catch(() => triggerToast('Falha ao atualizar no banco'));
   };
 
   const handleDeleteProduct = (productId: string) => {
-    setProducts((prev) => prev.filter((item) => item.id !== productId));
-    setCartItems((prev) => prev.filter((item) => item.product.id !== productId));
-    if (selectedProduct?.id === productId) {
-      setSelectedProduct(null);
-      setActiveView('manager');
-    }
-    triggerToast('Produto removido');
+    apiRemoveProduct(productId, session?.token)
+      .then(() => {
+        setProducts((prev) => prev.filter((item) => item.id !== productId));
+        setCartItems((prev) => prev.filter((item) => item.product.id !== productId));
+        if (selectedProduct?.id === productId) {
+          setSelectedProduct(null);
+          setActiveView('manager');
+        }
+        triggerToast('Produto removido');
+      })
+      .catch(() => triggerToast('Falha ao remover no banco'));
   };
 
-  const handleLogin = (account: StoreAccount) => {
-    setSession(account);
-    if (account.role === 'client') {
-      const clientRecord = clientAccounts.find((item) => item.id === account.id);
-      setUser((prev) => ({
-        ...prev,
-        id: account.id,
-        role: 'client',
-        name: account.name,
-        email: account.email,
-        avatar: account.avatar,
-        savedAddresses: clientRecord?.savedAddresses?.length ? clientRecord.savedAddresses : prev.savedAddresses
-      }));
-    }
+  const handleLogin = (account: AuthRecord) => {
+    setSession({
+      id: account.id,
+      role: account.role,
+      name: account.name,
+      email: account.email,
+      avatar: account.avatar,
+      token: account.token
+    });
+    setUser((prev) => ({
+      ...prev,
+      id: account.id,
+      role: account.role,
+      name: account.name,
+      email: account.email,
+      avatar: account.avatar,
+      savedAddresses: prev.savedAddresses,
+      favoriteIds: prev.favoriteIds
+    }));
     setActiveView(account.role === 'manager' ? 'manager' : 'profile');
     triggerToast(`Bem-vindo, ${account.name.split(' ')[0]}`);
   };
 
-  const handleRegisterClient = (account: AuthRecord) => {
-    setClientAccounts((prev) => [account, ...prev]);
-    setUser((prev) => ({
-      ...prev,
-      id: account.id,
-      role: 'client',
+  const handleRegisterAccount = (account: AuthRecord) => {
+    return apiRegisterAccount({
+      role: account.role,
       name: account.name,
       email: account.email,
+      password: account.password,
       avatar: account.avatar,
-      walletBalance: 0,
-      walletEarnings: 0,
-      tier: 'Básico',
-      savedAddresses: account.savedAddresses?.length ? account.savedAddresses : [],
-      favoriteIds: []
-    }));
+      savedAddresses: account.savedAddresses,
+      managerId: account.role === 'manager' ? account.id : undefined
+    }).then((registered) => {
+      handleLogin({ ...registered, password: account.password });
+      setUser((prev) => ({
+        ...prev,
+        id: registered.id,
+        role: registered.role,
+        name: registered.name,
+        email: registered.email,
+        avatar: registered.avatar,
+        walletBalance: 0,
+        walletEarnings: 0,
+        tier: 'Básico',
+        savedAddresses: account.savedAddresses?.length ? account.savedAddresses : [],
+        favoriteIds: []
+      }));
+      return registered;
+    });
   };
 
-  const handleSaveManagerPassword = (account: AuthRecord) => {
-    setManagerAccounts((prev) => {
-      const exists = prev.some((item) => item.id === account.id);
-      return exists ? prev.map((item) => item.id === account.id ? account : item) : [account, ...prev];
-    });
+  const handleLoginRequest = (role: 'client' | 'manager', email: string, password: string) => {
+    return apiLoginAccount(email, password, role);
   };
 
   const handleLogout = () => {
     setSession(null);
+    setUser({
+      id: '',
+      name: 'Visitante',
+      email: '',
+      avatar: 'https://ui-avatars.com/api/?name=Visitante&background=312e81&color=fff&bold=true',
+      role: 'client',
+      walletBalance: 0,
+      walletEarnings: 0,
+      tier: 'Básico',
+      savedAddresses: [],
+      favoriteIds: []
+    });
     setActiveView('home');
     triggerToast('Voce saiu da conta');
   };
@@ -299,11 +359,10 @@ export const App: React.FC = () => {
             />
           ) : (
             <AuthPanel
+              portal={isAdminPortal ? 'admin' : 'public'}
               managers={MANAGERS}
-              clientAccounts={clientAccounts}
-              managerAccounts={managerAccounts}
-              onRegisterClient={handleRegisterClient}
-              onSaveManagerPassword={handleSaveManagerPassword}
+              onRegisterAccount={handleRegisterAccount}
+              onLoginRequest={handleLoginRequest}
               onLogin={handleLogin}
               onBack={() => setActiveView('home')}
               highContrast={accessibilitySettings.highContrast}
@@ -313,11 +372,10 @@ export const App: React.FC = () => {
 
         {activeView === 'login' && (
           <AuthPanel
+            portal={isAdminPortal ? 'admin' : 'public'}
             managers={MANAGERS}
-            clientAccounts={clientAccounts}
-            managerAccounts={managerAccounts}
-            onRegisterClient={handleRegisterClient}
-            onSaveManagerPassword={handleSaveManagerPassword}
+            onRegisterAccount={handleRegisterAccount}
+            onLoginRequest={handleLoginRequest}
             onLogin={handleLogin}
             onBack={() => setActiveView('home')}
             highContrast={accessibilitySettings.highContrast}

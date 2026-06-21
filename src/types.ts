@@ -106,6 +106,7 @@ export interface StoreAccount {
   name: string;
   email: string;
   avatar: string;
+  token?: string;
 }
 
 export interface AuthRecord extends StoreAccount {

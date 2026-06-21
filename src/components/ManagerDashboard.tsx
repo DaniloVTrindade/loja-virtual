@@ -76,7 +76,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [aiInput, setAiInput] = useState('');
   const [chat, setChat] = useState<ChatMsg[]>([
-    { id: 'init', role: 'ai', text: 'Olá! Eu sou a IA do painel gerencial. Você pode me pedir para **adicionar produtos**, **remover produtos**, consultar **estoque**, **faturamento**, **pedidos** e muito mais. É só conversar comigo!', timestamp: ts() }
+    { id: 'init', role: 'ai', text: 'Olá! Eu sou a IA do painel gerencial. Posso ajudar com produtos, preços, estoque, pedidos, faturamento e organização da loja. Se você pedir credenciais, senhas ou dados internos, eu vou recusar.', timestamp: ts() }
   ]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -168,6 +168,41 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
   const parseAndExecute = useCallback((text: string) => {
     const lower = text.toLowerCase().trim();
+
+    if (
+      lower.includes('login') ||
+      lower.includes('senha') ||
+      lower.includes('password') ||
+      lower.includes('token') ||
+      lower.includes('credencial') ||
+      lower.includes('credenciais') ||
+      lower.includes('banco de dados') ||
+      lower.includes('base de dados') ||
+      lower.includes('dados do gerente') ||
+      lower.includes('dados sensiveis') ||
+      lower.includes('dados sensíveis')
+    ) {
+      addMsg('ai', 'Não posso revelar credenciais, senhas, tokens, dados internos ou acessos administrativos. Posso ajudar com catálogo, preços, estoque, pedidos, faturamento e políticas da loja.');
+      return;
+    }
+
+    if (lower.includes('preço') || lower.includes('preco') || lower.includes('custa') || lower.includes('valor')) {
+      const queryText = text
+        .replace(/^(qual|me diga|me fala|mostre|informe)\s+/i, '')
+        .replace(/(o\s+)?preço\s+(do|da|de|d|de um|de uma)\s+/i, '')
+        .replace(/(custa|valor)\s+(do|da|de)\s+/i, '')
+        .trim();
+      const matched = products.find((p) =>
+        p.title.toLowerCase().includes(queryText.toLowerCase()) ||
+        p.brand.toLowerCase().includes(queryText.toLowerCase())
+      );
+      if (matched) {
+        addMsg('ai', `O preço atual de **${matched.title}** é **R$ ${matched.price.toFixed(2)}**. Se quiser, eu também posso comparar estoque, categoria e desconto desse item.`);
+      } else {
+        addMsg('ai', `Não encontrei esse produto no catálogo atual. Se quiser, me diga o nome exato que eu tento localizar.`);
+      }
+      return;
+    }
 
     // --- ADD PRODUCT ---
     if (lower.startsWith('adicione') || lower.startsWith('adicionar') || lower.startsWith('crie') || lower.startsWith('criar') || lower.startsWith('cadastre') || lower.startsWith('cadastrar') || lower.startsWith('novo produto')) {
