@@ -59,6 +59,31 @@ const emptyForm: ProductForm = {
 };
 
 const ts = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const money = (value: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+const normalizeText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const scoreProductMatch = (product: Product, query: string) => {
+  const haystack = normalizeText([
+    product.title,
+    product.brand,
+    product.category,
+    product.description,
+    ...Object.keys(product.attributes)
+  ].join(' '));
+  const tokens = normalizeText(query).split(/\s+/).filter(Boolean);
+  let score = 0;
+  for (const token of tokens) {
+    if (haystack.includes(token)) score += token.length > 3 ? 3 : 1;
+  }
+  if (tokens.length === 0) return 0;
+  if (haystack.includes(normalizeText(query))) score += 5;
+  return score;
+};
 
 export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   manager,
@@ -89,6 +114,26 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   );
   const lowStock = products.filter((product) => product.stock <= 10);
   const averageTicket = orders.length ? revenue / orders.length : 0;
+  const sortedByRevenue = useMemo(() => [...products].sort((a, b) => b.price - a.price), [products]);
+  const cheapestProduct = sortedByRevenue[sortedByRevenue.length - 1];
+  const mostExpensiveProduct = sortedByRevenue[0];
+  const topSellingProduct = useMemo(() => {
+    const map = new Map<string, { title: string; quantity: number; total: number }>();
+    for (const order of orders) {
+      for (const item of order.items) {
+        const current = map.get(item.product.id) || {
+          title: item.product.title,
+          quantity: 0,
+          total: 0
+        };
+        current.quantity += item.quantity;
+        current.total += item.quantity * item.product.price;
+        map.set(item.product.id, current);
+      }
+    }
+    return [...map.entries()].sort((a, b) => b[1].quantity - a[1].quantity)[0]?.[1] || null;
+  }, [orders]);
+  const latestOrder = orders[0];
 
   const filteredProducts = products.filter((product) => {
     const text = `${product.title} ${product.brand} ${product.category}`.toLowerCase();
@@ -186,20 +231,89 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
       return;
     }
 
+    if (
+      lower.includes('resumo') ||
+      lower.includes('panorama') ||
+      lower.includes('visao geral') ||
+      lower.includes('visão geral') ||
+      lower.includes('status da loja')
+    ) {
+      const lines = [
+        `**Resumo atual da loja**`,
+        `• Produtos ativos: **${products.length}**`,
+        `• Pedidos: **${orders.length}**`,
+        `• Faturamento: **${money(revenue)}**`,
+        `• Ticket médio: **${money(averageTicket)}**`,
+        `• Estoque baixo: **${lowStock.length}**`
+      ];
+      if (topSellingProduct) {
+        lines.push(`• Mais vendido: **${topSellingProduct.title}** (${topSellingProduct.quantity} unidades)`);
+      }
+      if (latestOrder) {
+        lines.push(`• Último pedido: **${latestOrder.id}** em ${latestOrder.date}`);
+      }
+      addMsg('ai', lines.join('\n'));
+      return;
+    }
+
+    if (lower.includes('mais barato') || lower.includes('menor preço') || lower.includes('menor preco')) {
+      const candidate = cheapestProduct || products[0];
+      if (!candidate) {
+        addMsg('ai', 'Não encontrei produtos no catálogo para comparar preços.');
+        return;
+      }
+      addMsg('ai', `O produto com menor preço agora é **${candidate.title}**, por **${money(candidate.price)}**.`);
+      return;
+    }
+
+    if (lower.includes('mais caro') || lower.includes('maior preço') || lower.includes('maior preco')) {
+      const candidate = mostExpensiveProduct || products[0];
+      if (!candidate) {
+        addMsg('ai', 'Não encontrei produtos no catálogo para comparar preços.');
+        return;
+      }
+      addMsg('ai', `O produto com maior preço agora é **${candidate.title}**, por **${money(candidate.price)}**.`);
+      return;
+    }
+
+    if (lower.includes('mais vendido') || lower.includes('top produto') || lower.includes('produto principal')) {
+      if (!topSellingProduct) {
+        addMsg('ai', 'Ainda não tenho vendas suficientes para apontar um produto líder.');
+        return;
+      }
+      addMsg('ai', `O item mais vendido agora é **${topSellingProduct.title}**, com **${topSellingProduct.quantity} unidades** e **${money(topSellingProduct.total)}** em vendas.`);
+      return;
+    }
+
+    if (lower.includes('pedido mais recente') || lower.includes('ultimo pedido') || lower.includes('último pedido')) {
+      if (!latestOrder) {
+        addMsg('ai', 'Ainda não há pedidos registrados.');
+        return;
+      }
+      addMsg('ai', `O pedido mais recente é **${latestOrder.id}** em **${latestOrder.date}**, no valor de **${money(latestOrder.total)}**.`);
+      return;
+    }
+
+    if (lower.includes('gerentes') || lower.includes('equipe') || lower.includes('quantos gerentes')) {
+      addMsg('ai', `A loja tem **${managers.length} gerentes** cadastrados. Posso ajudar a revisar produtos, pedidos, preços e indicadores da operação.`);
+      return;
+    }
+
     if (lower.includes('preço') || lower.includes('preco') || lower.includes('custa') || lower.includes('valor')) {
       const queryText = text
         .replace(/^(qual|me diga|me fala|mostre|informe)\s+/i, '')
         .replace(/(o\s+)?preço\s+(do|da|de|d|de um|de uma)\s+/i, '')
         .replace(/(custa|valor)\s+(do|da|de)\s+/i, '')
         .trim();
-      const matched = products.find((p) =>
-        p.title.toLowerCase().includes(queryText.toLowerCase()) ||
-        p.brand.toLowerCase().includes(queryText.toLowerCase())
-      );
+      const ranked = [...products]
+        .map((product) => ({ product, score: scoreProductMatch(product, queryText || text) }))
+        .filter((entry) => entry.score > 0)
+        .sort((a, b) => b.score - a.score);
+      const matched = ranked[0]?.product;
       if (matched) {
-        addMsg('ai', `O preço atual de **${matched.title}** é **R$ ${matched.price.toFixed(2)}**. Se quiser, eu também posso comparar estoque, categoria e desconto desse item.`);
+        addMsg('ai', `O preço atual de **${matched.title}** é **${money(matched.price)}**. Posso também te dizer estoque, categoria, variação e posição no catálogo.`);
       } else {
-        addMsg('ai', `Não encontrei esse produto no catálogo atual. Se quiser, me diga o nome exato que eu tento localizar.`);
+        addMsg('ai', `Não encontrei esse produto no catálogo atual. Se você me passar o nome exato, eu tento localizar com mais precisão.`);
       }
       return;
     }
@@ -407,17 +521,20 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
         '   `Adicione Nome por 199,90 estoque: 10 imagem: https://...`\n' +
         '   Ou no formato:\n' +
         '   ```\n   Título: Nome\n   Preço: 199,90\n   Categoria: Eletrônicos\n   Estoque: 10\n   Imagem: https://...\n   ```\n' +
-        '🗑️ **Remover produto** — `Remova iPhone 15`\n' +
-        '🔍 **Buscar produto** — `Busque iPhone`\n' +
-        '📊 **Faturamento** — "Qual o faturamento?"\n' +
-        '⚠️ **Estoque baixo** — "Quais produtos estão com estoque baixo?"\n' +
-        '📦 **Total produtos** — "Quantos produtos ativos?"');
+         '🗑️ **Remover produto** — `Remova iPhone 15`\n' +
+         '🔍 **Buscar produto** — `Busque iPhone`\n' +
+         '🧭 **Resumo da loja** — `Me dê um resumo da loja`\n' +
+         '📊 **Faturamento** — "Qual o faturamento?"\n' +
+         '🏷️ **Mais barato / mais caro** — `Qual o mais barato?`\n' +
+         '🏆 **Mais vendido** — `Qual foi o mais vendido?`\n' +
+         '⚠️ **Estoque baixo** — "Quais produtos estão com estoque baixo?"\n' +
+         '📦 **Total produtos** — "Quantos produtos ativos?"');
       return;
     }
 
     // --- FALLBACK: try to be helpful with data context ---
-    addMsg('ai', `Desculpe, não entendi seu comando. Digite "ajuda" para ver o que posso fazer.\n\n📊 **Dados atuais da loja:**\n• ${products.length} produtos ativos\n• R$ ${revenue.toFixed(2)} em faturamento\n• ${orders.length} pedidos realizados\n• ${lowStock.length} produtos com estoque baixo`);
-  }, [products, orders, lowStock, revenue, itemsSold, averageTicket, onCreateProduct, onDeleteProduct]);
+    addMsg('ai', `Desculpe, não entendi seu comando. Digite "ajuda" para ver o que posso fazer.\n\n📊 **Dados atuais da loja:**\n• ${products.length} produtos ativos\n• ${money(revenue)} em faturamento\n• ${orders.length} pedidos realizados\n• ${lowStock.length} produtos com estoque baixo`);
+  }, [averageTicket, cheapestProduct, latestOrder, lowStock, managers.length, mostExpensiveProduct, onCreateProduct, onDeleteProduct, orders, products, revenue, topSellingProduct]);
 
   const handleAiSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -616,12 +733,12 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             </div>
             <div className="flex-1">
               <h2 className="text-lg font-black">IA Gerencial</h2>
-              <p className="text-xs opacity-70">Adicione e remova produtos, consulte dados da loja — sem limites.</p>
+              <p className="text-xs opacity-70">Atualizada com catálogo, pedidos, preços e indicadores da operação.</p>
             </div>
             <button
               type="button"
               onClick={() => setChat([
-                { id: 'init', role: 'ai', text: 'Olá! Sou a IA do painel gerencial. Como posso ajudar?', timestamp: ts() }
+                { id: 'init', role: 'ai', text: 'Olá! Sou a IA do painel gerencial. Posso resumir a loja, achar produtos, comparar preços e listar dados operacionais atuais.', timestamp: ts() }
               ])}
               className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold hover:bg-slate-50"
             >

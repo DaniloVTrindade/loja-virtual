@@ -23,6 +23,14 @@ export async function loadBootstrap() {
   return request<{ products: Product[]; orders: Order[]; managers: StoreAccount[] }>('/bootstrap');
 }
 
+export async function loadSession(token: string) {
+  return request<AuthRecord>('/session', {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
 export async function loginAccount(email: string, password: string, role?: 'client' | 'manager') {
   return request<AuthRecord>('/auth/login', {
     method: 'POST',

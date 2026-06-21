@@ -202,6 +202,45 @@ export async function resolveSession(token?: string | null) {
   return (rows as SessionRow[])[0] || null;
 }
 
+async function getClientById(id: string) {
+  const rows = await query<ClientRow>('SELECT * FROM clients WHERE id = ? LIMIT 1', [id]);
+  return (rows as ClientRow[])[0] || null;
+}
+
+async function getManagerById(id: string) {
+  const rows = await query<ManagerRow>('SELECT * FROM managers WHERE id = ? LIMIT 1', [id]);
+  return (rows as ManagerRow[])[0] || null;
+}
+
+export async function getSessionAccount(token?: string | null) {
+  const session = await resolveSession(token);
+  if (!session) return null;
+
+  if (session.role === 'client') {
+    const client = await getClientById(session.account_id);
+    if (!client) return null;
+    return {
+      id: client.id,
+      role: 'client' as const,
+      name: client.name,
+      email: client.email,
+      avatar: client.avatar,
+      token
+    };
+  }
+
+  const manager = await getManagerById(session.account_id);
+  if (!manager) return null;
+  return {
+    id: manager.id,
+    role: 'manager' as const,
+    name: manager.name,
+    email: manager.email,
+    avatar: manager.avatar,
+    token
+  };
+}
+
 async function ensureSchema() {
   if (!ensured) {
     ensured = (async () => {

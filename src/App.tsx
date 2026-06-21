@@ -14,7 +14,7 @@ import { ProductList } from './components/ProductList';
 import { UserDashboard } from './components/UserDashboard';
 import { MANAGERS, MOCK_COUPONS, MOCK_ORDERS, MOCK_PRODUCTS, STORE_POLICIES } from './data/mockData';
 import { AccessibilitySettings, AuthRecord, CartItem, Order, Product, StoreAccount, StorePolicy, UserProfile } from './types';
-import { loadBootstrap, loginAccount as apiLoginAccount, registerAccount as apiRegisterAccount, removeProduct as apiRemoveProduct, saveOrder as apiSaveOrder, saveProduct as apiSaveProduct } from './services/backend';
+import { loadBootstrap, loadSession, loginAccount as apiLoginAccount, registerAccount as apiRegisterAccount, removeProduct as apiRemoveProduct, saveOrder as apiSaveOrder, saveProduct as apiSaveProduct } from './services/backend';
 import { useLocalStorage } from './utils/useLocalStorage';
 
 export const App: React.FC = () => {
@@ -69,6 +69,33 @@ export const App: React.FC = () => {
       mounted = false;
     };
   }, [setOrders, setProducts]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!session?.token) return;
+
+    loadSession(session.token)
+      .then((account) => {
+        if (!mounted) return;
+        setSession((prev) => prev ? { ...prev, ...account } : account);
+        setUser((prev) => ({
+          ...prev,
+          id: account.id,
+          role: account.role,
+          name: account.name,
+          email: account.email,
+          avatar: account.avatar
+        }));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSession(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [session?.token, setSession, setUser]);
 
   const activeManager = useMemo(() => {
     if (session?.role !== 'manager') return MANAGERS[0];
